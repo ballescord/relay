@@ -1,0 +1,18 @@
+services:
+  pc-power-panel:
+    build: .
+    # Or use a prebuilt image instead of build:
+    # image: ghcr.io/YOURNAME/pc-power-panel:latest
+    container_name: pc-power-panel
+    restart: unless-stopped
+
+    # host networking lets the Wake-on-LAN broadcast reach your LAN directly.
+    network_mode: host
+
+    volumes:
+      # Your config + SSH private key live here (see config.example.yaml)
+      - ./config:/config:ro
+
+    # If you are NOT using host networking, expose the port instead:
+    # ports:
+    #   - "8765:8765"

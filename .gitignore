@@ -1,0 +1,12 @@
+# User config & secrets — never commit these
+config/
+*.pem
+*.key
+id_ed25519*
+id_rsa*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

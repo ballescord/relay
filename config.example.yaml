@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# PC Power Panel — example configuration
+# Copy this file to  config/config.yaml  and edit it.
+# ---------------------------------------------------------------------------
+
+# Optional HTTP Basic Auth for the panel.
+# STRONGLY recommended if the panel is reachable by anyone other than you.
+# Leave both empty to disable the login prompt.
+auth:
+  user: ""
+  password: ""
+
+# Where Wake-on-LAN magic packets are sent.
+# 255.255.255.255 works on a flat LAN. If it doesn't wake your machine, add
+# your subnet's directed broadcast (e.g. 192.168.1.255).
+wol_broadcasts:
+  - "255.255.255.255"
+  # - "192.168.1.255"
+
+# Your machines.
+#   id       : unique short id (used in URLs)
+#   name     : label shown on the card
+#   mac      : MAC address — required for the "Wake" button
+#   ssh      : user@host — required for "Reboot"/"Shutdown" (SSH target)
+#   wol      : true to show the Wake button
+devices:
+  - id: desktop
+    name: "My Desktop"
+    mac: "aa:bb:cc:dd:ee:ff"
+    ssh: "user@192.168.1.50"
+    wol: true
+
+  - id: server
+    name: "Home Server"
+    ssh: "user@192.168.1.10"
+    wol: false        # always on — no Wake button
