@@ -10,8 +10,9 @@ services:
     network_mode: host
 
     volumes:
-      # Your config + SSH private key live here (see config.example.yaml)
-      - ./config:/config:ro
+      # Config + SSH key live here. Writable: the panel manages devices and
+      # auto-generates the SSH key on first start.
+      - ./config:/config
 
     # If you are NOT using host networking, expose the port instead:
     # ports:
