@@ -18,7 +18,7 @@ echo
 
 # --- 1. SSH key ------------------------------------------------------------
 if [ ! -f config/id_ed25519 ]; then
-  ssh-keygen -t ed25519 -N "" -C "pc-power-panel" -f config/id_ed25519 >/dev/null
+  ssh-keygen -t ed25519 -N "" -C "relay" -f config/id_ed25519 >/dev/null
   echo "✅ SSH key generated (config/id_ed25519)"
 else
   echo "• SSH key already exists (config/id_ed25519)"
@@ -86,8 +86,8 @@ while true; do
   STEPS+=$'On that machine, run:\n'
   STEPS+=$'  mkdir -p ~/.ssh && chmod 700 ~/.ssh\n'
   STEPS+=$'  echo "'"$PUB"$'" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys\n'
-  STEPS+=$'  echo "'"$SSHUSER"$' ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff" | sudo tee /etc/sudoers.d/pc-power-panel\n'
-  STEPS+=$'  sudo chmod 440 /etc/sudoers.d/pc-power-panel\n'
+  STEPS+=$'  echo "'"$SSHUSER"$' ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff" | sudo tee /etc/sudoers.d/relay\n'
+  STEPS+=$'  sudo chmod 440 /etc/sudoers.d/relay\n'
   [ "$WOL" = "true" ] && STEPS+=$'  # Wake: enable WoL in BIOS, then: sudo ethtool -s <iface> wol g\n'
 
   n=$((n+1))

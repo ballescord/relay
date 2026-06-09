@@ -10,5 +10,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 
+# PORT is configurable (default 8765) — handy when 8765 is already in use.
 EXPOSE 8765
-CMD ["gunicorn", "-b", "0.0.0.0:8765", "--workers", "2", "--timeout", "60", "app:app"]
+CMD ["sh", "-c", "exec gunicorn -b 0.0.0.0:${PORT:-8765} --workers 2 --timeout 60 app:app"]

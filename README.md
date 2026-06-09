@@ -25,8 +25,8 @@ machines — from any browser or phone.
 ## 1. Get the files
 
 ```bash
-git clone https://github.com/YOURNAME/pc-power-panel.git
-cd pc-power-panel
+git clone https://github.com/YOURNAME/relay.git
+cd relay
 mkdir -p config
 cp config.example.yaml config/config.yaml
 ```
@@ -36,7 +36,7 @@ cp config.example.yaml config/config.yaml
 This key lets the panel run power commands on your machines.
 
 ```bash
-ssh-keygen -t ed25519 -N "" -C "pc-power-panel" -f config/id_ed25519
+ssh-keygen -t ed25519 -N "" -C "relay" -f config/id_ed25519
 ```
 
 The Wake feature alone does **not** need this key — skip this step if you only
@@ -82,8 +82,8 @@ chmod 600 ~/.ssh/authorized_keys
 
 ```bash
 echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff" \
-  | sudo tee /etc/sudoers.d/pc-power-panel
-sudo chmod 440 /etc/sudoers.d/pc-power-panel
+  | sudo tee /etc/sudoers.d/relay
+sudo chmod 440 /etc/sudoers.d/relay
 ```
 
 **c) (Wake only) Enable Wake-on-LAN** on the target — needs **wired Ethernet**:
@@ -122,7 +122,7 @@ Open **http://SERVER-IP:8765**.
 ## How it works
 
 ```
-pc-power-panel (container, host network)
+relay (container, host network)
   ├── Wake     → UDP magic packet → LAN broadcast (port 9)
   └── Reboot   → ssh -i id_ed25519 user@host  "sudo systemctl reboot"
       Shutdown → ssh -i id_ed25519 user@host  "sudo systemctl poweroff"

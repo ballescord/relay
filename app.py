@@ -77,7 +77,7 @@ def ensure_key():
     try:
         os.makedirs(os.path.dirname(SSH_KEY) or ".", exist_ok=True)
         subprocess.run(
-            ["ssh-keygen", "-t", "ed25519", "-N", "", "-C", "pc-power-panel", "-f", SSH_KEY],
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-C", "relay", "-f", SSH_KEY],
             check=True, capture_output=True,
         )
     except Exception:  # noqa: BLE001
@@ -342,7 +342,7 @@ def setup_steps(data, pubkey):
         key_line = ("mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '" + pubkey
                     + "' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys")
         sudo_line = ('echo "$USER ALL=(ALL) NOPASSWD: /sbin/shutdown" | sudo tee '
-                     "/etc/sudoers.d/pc-power-panel && sudo chmod 440 /etc/sudoers.d/pc-power-panel")
+                     "/etc/sudoers.d/relay && sudo chmod 440 /etc/sudoers.d/relay")
         steps += [
             {"title": "Enable Remote Login (SSH)",
              "desc": "Lets the panel sign in. Same as System Settings → General → Sharing → Remote Login.",
@@ -364,8 +364,8 @@ def setup_steps(data, pubkey):
     key_line = ("mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '" + pubkey
                 + "' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys")
     sudo_line = ('echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot, '
-                 '/usr/bin/systemctl poweroff" | sudo tee /etc/sudoers.d/pc-power-panel '
-                 "&& sudo chmod 440 /etc/sudoers.d/pc-power-panel")
+                 '/usr/bin/systemctl poweroff" | sudo tee /etc/sudoers.d/relay '
+                 "&& sudo chmod 440 /etc/sudoers.d/relay")
     steps += [
         {"title": "Authorize this panel's SSH key",
          "desc": "Lets the panel securely sign in to this machine.", "cmd": key_line},

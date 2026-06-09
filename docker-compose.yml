@@ -1,13 +1,18 @@
 services:
-  pc-power-panel:
+  relay:
     build: .
     # Or use a prebuilt image instead of build:
-    # image: ghcr.io/YOURNAME/pc-power-panel:latest
-    container_name: pc-power-panel
+    # image: ghcr.io/YOURNAME/relay:latest
+    container_name: relay
     restart: unless-stopped
 
     # host networking lets the Wake-on-LAN broadcast reach your LAN directly.
     network_mode: host
+
+    # Port the panel listens on (default 8765). Override via a .env file or
+    # the shell, e.g.  PORT=8766 docker compose up -d
+    environment:
+      - PORT=${PORT:-8765}
 
     volumes:
       # Config + SSH key live here. Writable: the panel manages devices and
