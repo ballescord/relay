@@ -40,6 +40,6 @@ x-casaos:
     en_us: "Power your PCs from the browser"
   title:
     en_us: "Relay"
-  icon: "https://cdn.jsdelivr.net/gh/selfhst/icons/png/wakeonlan.png"
+  icon: "https://raw.githubusercontent.com/ballescord/relay/main/docs/logo.png"
   scheme: http
   port_map: "8765"
