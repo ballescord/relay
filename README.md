@@ -1,18 +1,24 @@
 # ⚡ PC Power Panel
 
-A tiny self-hosted web panel to **wake**, **reboot**, and **shut down** the
-machines on your LAN — from any browser or phone.
+A tiny self-hosted web panel to **wake**, **reboot**, and **shut down** your
+machines — from any browser or phone.
 
 - **Wake** – sends a Wake-on-LAN magic packet (needs the device's MAC).
-- **Reboot / Shutdown** – connects over SSH and runs `sudo systemctl reboot|poweroff`.
+- **Reboot / Shutdown** – connects over SSH; OS-aware commands for **Windows, macOS and Linux**.
+- **Remote sites via a relay** – an always-on device (Raspberry Pi, mini-PC, NAS… any OS) on a
+  remote LAN, joined to your [Tailscale](https://tailscale.com) tailnet, wakes that site's PCs and
+  proxies SSH to them (`ssh -J`) — so the PCs themselves don't need Tailscale.
+- **Browser wizard** – step-by-step device setup; each field shows a "how to find this" command and
+  the final screen prints the exact, copyable setup steps for the target OS.
 - Runs in **Docker**, configured with a simple `config.yaml`.
 - Optional built-in **HTTP basic auth**.
 
 ![panel](docs/screenshot.png)
 
-> ⚠️ **Security:** this panel can power your machines off. Do **not** expose it
-> to the internet without authentication. Use the built-in basic auth and/or put
-> it behind a VPN, reverse-proxy auth, or Cloudflare Access.
+> ⚠️ **Security:** this panel can power your machines off and holds an SSH key to them. **Set a
+> password** and keep it on a trusted network (LAN / Tailscale). Do **not** expose it to the
+> internet without authentication — ideally also put it behind a VPN, reverse-proxy auth, or
+> Cloudflare Access. See [Privacy & Security](#privacy--security) below.
 
 ---
 
@@ -148,6 +154,39 @@ Environment overrides: `CONFIG_PATH` (default `/config/config.yaml`),
 | Reboot says "a password is required" | The `NOPASSWD` sudoers rule (step 4b) is missing/incorrect. |
 | Wake does nothing | WoL disabled in BIOS/NIC, machine on Wi-Fi (use Ethernet), or wrong broadcast. |
 | 500 / `ssh not found` | Rebuild the image (`docker compose up -d --build`). |
+
+## Privacy & Security
+
+**Your data never leaves your infrastructure.**
+
+- **No telemetry, no analytics, no phone-home.** The app makes **no outbound connection** to any
+  third party. The UI loads no external scripts, fonts, or CDNs — all CSS/JS is inline.
+- **Everything stays local.** Whatever you enter (IPs, MACs, SSH usernames, the panel password) is
+  written only to your own `config/config.yaml` on your own host, and is used solely to connect to
+  the machines **you** configure. The only network traffic the app generates is: Wake-on-LAN packets
+  on your LAN, and SSH to the hosts/relays you defined.
+- **Secrets stay out of git.** `config/` and `id_ed25519*` are git-ignored — your config, password
+  and SSH key are never committed.
+
+**Hardening built in:**
+
+- **Input validation** on every device/relay field (IDs, hostnames, SSH usernames, MACs) to block
+  SSH-argument and shell-command injection — values that could be parsed as SSH options (e.g. a
+  leading `-`) or contain shell metacharacters are rejected.
+- **CSRF protection** — cross-origin state-changing requests are blocked (the panel uses Basic Auth,
+  which browsers auto-send, so this matters).
+- **Constant-time** password comparison.
+- A loud **warning banner** when no password is set.
+
+**Your responsibilities:**
+
+- **Set a password** (Settings → Panel password). Without one, anyone who can reach the panel can
+  power and access your machines.
+- **Run it on a trusted network.** The panel speaks plain HTTP (Basic Auth in clear), so keep it on
+  your LAN / Tailscale, or terminate TLS at a reverse proxy. Don't expose it to the public internet.
+- The panel holds an **SSH key that can reboot/shutdown all your machines** — treat the panel host
+  as sensitive. SSH host-key checking is intentionally relaxed for usability, so rely on a trusted/
+  encrypted transport (LAN, Tailscale).
 
 ## License
 

@@ -8,13 +8,40 @@ Managed entirely from the browser:
   * power actions are OS-aware (Linux: systemctl, Windows: shutdown)
 """
 
+import hmac
 import os
+import re
 import socket
 import subprocess
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import yaml
 from flask import Flask, Response, redirect, render_template_string, request
+
+# --- Input validation (block shell/SSH-argument injection via config fields) --
+RE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
+RE_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")   # IPv4 / hostname, no leading '-'
+RE_USER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
+RE_MAC = re.compile(r"^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$")
+
+
+def parse_ssh_target(value):
+    """Validate a 'user@host' SSH target. Returns the clean string or None.
+    Rejects anything that could be parsed by ssh as an option (leading '-',
+    shell metacharacters, etc.)."""
+    s = (value or "").strip()
+    if "@" not in s:
+        return None
+    user, host = s.rsplit("@", 1)
+    if RE_USER.match(user) and RE_HOST.match(host):
+        return user + "@" + host
+    return None
+
+
+def clean_mac(value):
+    """Return the MAC if it is a valid hex MAC, else None."""
+    s = (value or "").strip()
+    return s if RE_MAC.match(s) else None
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/config/config.yaml")
 SSH_KEY = os.environ.get("SSH_KEY", "/config/id_ed25519")
@@ -107,15 +134,25 @@ ensure_key()
 # Auth
 # --------------------------------------------------------------------------- #
 @app.before_request
-def _auth():
+def _guard():
     if request.path == "/healthz":
         return
+    # CSRF: block cross-origin state-changing requests. Browsers auto-send
+    # Basic-Auth creds, so a malicious page could otherwise POST /shutdown.
+    # Browsers send Origin on POST; non-browser tools (curl) send neither and pass.
+    if request.method == "POST":
+        origin = request.headers.get("Origin") or request.headers.get("Referer")
+        if origin and urlparse(origin).netloc != request.host:
+            return Response("Cross-origin request blocked (CSRF).", 403)
+    # Optional Basic Auth (strongly recommended — see the warning banner)
     a = load_config().get("auth") or {}
-    user, pw = a.get("user"), a.get("password")
+    user, pw = a.get("user") or "", a.get("password") or ""
     if not user and not pw:
         return
     cred = request.authorization
-    if not cred or cred.username != user or cred.password != pw:
+    if (not cred
+            or not hmac.compare_digest(cred.username or "", user)
+            or not hmac.compare_digest(cred.password or "", pw)):
         return Response("Authentication required.", 401,
                         {"WWW-Authenticate": 'Basic realm="PC Power Panel"'})
 
@@ -175,8 +212,13 @@ def relay_wake_shell(relay_os, mac, targets):
 
 
 def run_power(device, action, relay=None):
+    # Re-validate before exec — guards against hand-edited config (SSH arg injection).
+    if not parse_ssh_target(device.get("ssh")):
+        return "❌ invalid SSH target in config."
     base = ["ssh"] + SSH_OPTS
     if relay and relay.get("ssh"):
+        if not parse_ssh_target(relay["ssh"]):
+            return "❌ invalid relay SSH target in config."
         base += ["-J", relay["ssh"]]   # ProxyJump through the site's relay
     cmd = base + [device["ssh"], remote_command(device, action)]
     try:
@@ -467,6 +509,7 @@ def page(body, title="PC Power Panel"):
 
 PANEL = """
 <div class="top"><h1>⚡ PC Power Panel</h1><a class="pill" href="/settings">⚙ Settings</a></div>
+{% if noauth %}<div class="msg" style="background:#5a1a1a;color:#ffd9d9">⚠️ No password set — anyone who can reach this panel can power and access your machines. Set one in <a href="/settings" style="color:#fff;text-decoration:underline">Settings → Panel password</a>, and keep the panel on a trusted network (LAN / Tailscale).</div>{% endif %}
 {% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
 <div class="grid">
 {% for d in devices %}
@@ -482,6 +525,7 @@ PANEL = """
 
 SETTINGS = """
 <div class="top"><h1>⚙ Settings</h1><a class="pill" href="/">← Panel</a></div>
+{% if noauth %}<div class="msg" style="background:#5a1a1a;color:#ffd9d9">⚠️ No password set — set one below. Anyone who can reach this panel can otherwise power and access your machines.</div>{% endif %}
 {% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
 <div class="card"><h2>Panel password</h2>
  <p class="sub">Recommended — anyone who reaches this panel can power your machines.</p>
@@ -665,10 +709,16 @@ HIDDEN_MACRO = (
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
+def _noauth(cfg):
+    a = cfg.get("auth") or {}
+    return not (a.get("user") or a.get("password"))
+
+
 @app.route("/")
 def index():
     cfg = load_config()
-    return page(render_template_string(PANEL, devices=cfg["devices"], msg=request.args.get("msg")))
+    return page(render_template_string(
+        PANEL, devices=cfg["devices"], noauth=_noauth(cfg), msg=request.args.get("msg")))
 
 
 @app.route("/settings")
@@ -676,7 +726,7 @@ def settings():
     cfg = load_config()
     return page(render_template_string(
         SETTINGS, devices=cfg["devices"], relays=cfg.get("relays", []),
-        auth=cfg.get("auth") or {},
+        auth=cfg.get("auth") or {}, noauth=_noauth(cfg),
         pubkey=get_pubkey(), msg=request.args.get("msg")), "Settings")
 
 
@@ -717,33 +767,48 @@ def add_device():
     f = request.form
     host = "127.0.0.1" if f.get("conn") == "local" else f.get("host", "").strip()
     dev_id = f.get("id", "").strip()
-    if not dev_id or not host:
-        return redirect("/settings?msg=" + quote("id and host are required."))
+    ssh_user = (f.get("ssh_user") or "user").strip()
+
+    if not RE_ID.match(dev_id):
+        return redirect("/settings?msg=" + quote("Invalid id — use letters, digits, . _ - only."))
+    if not RE_HOST.match(host):
+        return redirect("/settings?msg=" + quote("Invalid host / IP address."))
+    if not RE_USER.match(ssh_user):
+        return redirect("/settings?msg=" + quote("Invalid SSH username."))
+
+    osv = f.get("os", "linux")
     device = {
         "id": dev_id,
         "name": f.get("name", "").strip() or dev_id,
-        "os": f.get("os", "linux") or "linux",
-        "ssh": f"{(f.get('ssh_user') or 'user').strip()}@{host}",
+        "os": osv if osv in ("windows", "mac", "linux") else "linux",
+        "ssh": ssh_user + "@" + host,
         "wol": bool(f.get("wol")),
     }
-    if f.get("distro"):
+    if f.get("distro") in DISTROS:
         device["distro"] = f.get("distro")
     if f.get("mac", "").strip():
-        device["mac"] = f.get("mac").strip()
+        mac = clean_mac(f.get("mac"))
+        if not mac:
+            return redirect("/settings?msg=" + quote("Invalid MAC address (use aa:bb:cc:dd:ee:ff)."))
+        device["mac"] = mac
     if f.get("conn") == "relay" and f.get("relay", "").strip():
-        device["relay"] = f.get("relay").strip()
+        rid = f.get("relay").strip()
+        if not find_relay(cfg, rid):
+            return redirect("/settings?msg=" + quote("Unknown relay."))
+        device["relay"] = rid
     cfg["devices"] = [x for x in cfg["devices"] if x.get("id") != dev_id] + [device]
     save_config(cfg)
-    return redirect("/?msg=" + quote(f"Added {device['name']}."))
+    return redirect("/?msg=" + quote("Added " + device["name"] + "."))
 
 
 @app.route("/wake/<dev_id>", methods=["POST"])
 def wake(dev_id):
     cfg = load_config()
     d = find_device(cfg, dev_id)
-    if not (d and d.get("mac")):
+    mac = clean_mac(d.get("mac")) if d else None
+    if not mac:
         return redirect("/?msg=" + quote(
-            "Wake needs a MAC address — re-run the wizard for this device to add one."))
+            "Wake needs a valid MAC address — re-run the wizard for this device to add one."))
 
     host = d.get("ssh", "").split("@")[-1].strip()
     targets = ["255.255.255.255"]
@@ -753,7 +818,9 @@ def wake(dev_id):
 
     relay = find_relay(cfg, d.get("relay")) if d.get("relay") else None
     if relay and relay.get("ssh"):
-        shell = relay_wake_shell(relay.get("os", "linux"), d["mac"], targets)
+        if not parse_ssh_target(relay["ssh"]):
+            return redirect("/?msg=" + quote("Invalid relay SSH target in config."))
+        shell = relay_wake_shell(relay.get("os", "linux"), mac, targets)
         cmd = ["ssh"] + SSH_OPTS + [relay["ssh"], shell]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
@@ -766,7 +833,7 @@ def wake(dev_id):
                if ok else
                f"❌ Relay '{rname}' problem: {err[-1] if err else 'unreachable — is it online?'}")
     else:
-        wake_on_lan(d["mac"], cfg["wol_broadcasts"], [host] if host else None)
+        wake_on_lan(mac, cfg["wol_broadcasts"], [host] if host else None)
         msg = (f"📶 {d.get('name', dev_id)}: magic packet sent. "
                "(If it doesn't power on, enable Wake-on-LAN in the BIOS — same network only.)")
     return redirect("/?msg=" + quote(msg))
@@ -799,11 +866,14 @@ def add_relay():
     cfg = load_config()
     f = request.form
     rid = f.get("id", "").strip()
-    ssh = f.get("ssh", "").strip()
-    if not rid or not ssh:
-        return redirect("/settings?msg=" + quote("Relay id and SSH target are required."))
+    ssh = parse_ssh_target(f.get("ssh"))
+    if not RE_ID.match(rid):
+        return redirect("/settings?msg=" + quote("Invalid relay id."))
+    if not ssh:
+        return redirect("/settings?msg=" + quote("Relay SSH must be user@host (no special characters)."))
+    osv = f.get("os", "linux")
     relay = {"id": rid, "name": f.get("name", "").strip() or rid,
-             "os": f.get("os", "linux") or "linux", "ssh": ssh}
+             "os": osv if osv in ("windows", "mac", "linux") else "linux", "ssh": ssh}
     cfg["relays"] = [x for x in cfg.get("relays", []) if x.get("id") != rid] + [relay]
     save_config(cfg)
     return redirect("/relay/" + quote(rid))
