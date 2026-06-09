@@ -1,24 +1,45 @@
+name: relay
 services:
   relay:
-    build: .
-    # Or use a prebuilt image instead of build:
-    # image: ghcr.io/YOURNAME/relay:latest
+    # Pre-built image — pulled automatically (no local build needed).
+    # Devs who want to build from source: docker build -t ghcr.io/ballescord/relay:latest .
+    image: ghcr.io/ballescord/relay:latest
     container_name: relay
     restart: unless-stopped
 
     # host networking lets the Wake-on-LAN broadcast reach your LAN directly.
     network_mode: host
 
-    # Port the panel listens on (default 8765). Override via a .env file or
-    # the shell, e.g.  PORT=8766 docker compose up -d
+    # Port the panel listens on (default 8765). Change here if it's in use.
     environment:
       - PORT=${PORT:-8765}
 
     volumes:
-      # Config + SSH key live here. Writable: the panel manages devices and
-      # auto-generates the SSH key on first start.
-      - ./config:/config
+      # Config + auto-generated SSH key persist here.
+      # Non-CasaOS users can use any path or a named volume instead.
+      - /DATA/AppData/relay/config:/config
 
-    # If you are NOT using host networking, expose the port instead:
-    # ports:
-    #   - "8765:8765"
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8765'))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: relay
+  author: ballescord
+  developer: ballescord
+  category: Network
+  description:
+    en_us: "Wake-on-LAN / reboot / shutdown panel for your machines. Multi-OS (Windows/macOS/Linux); remote sites via a Tailscale relay. No telemetry, all data stays local."
+  tagline:
+    en_us: "Power your PCs from the browser"
+  title:
+    en_us: "Relay"
+  icon: "https://cdn.jsdelivr.net/gh/selfhst/icons/png/wakeonlan.png"
+  scheme: http
+  port_map: "8765"

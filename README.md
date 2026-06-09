@@ -106,16 +106,40 @@ sudo systemctl enable --now wol-enable.service
 
 ## 5. Run it
 
+A pre-built multi-arch image is published to GHCR, so you don't build anything —
+`docker compose up` pulls it:
+
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-Open **http://SERVER-IP:8765**.
+Open **http://SERVER-IP:8765**. The SSH key is generated automatically on first
+start (in the `config` volume), so step 2 above is optional.
 
-> `network_mode: host` is used so Wake-on-LAN broadcasts reach your LAN. If your
-> platform doesn't support host networking, switch to the `ports:` mapping in
-> `docker-compose.yml` — Wake may then require a directed broadcast in
-> `wol_broadcasts` and a network that forwards it.
+> Port already in use? Pick another: `PORT=8766 docker compose up -d`.
+
+### CasaOS (or any compose UI)
+
+Install it like any other app — no local files needed:
+
+1. CasaOS → **➕ → Custom Install → Import**, then paste the contents of
+   [`docker-compose.yml`](docker-compose.yml) (it carries `x-casaos` metadata).
+2. **Install** — CasaOS pulls `ghcr.io/ballescord/relay:latest` and starts it.
+
+> The image must be publicly readable for an anonymous pull. If you fork this,
+> the included GitHub Action publishes your own image — just make the GHCR
+> package **public** once.
+
+### Build from source instead (optional)
+
+```bash
+docker build -t ghcr.io/ballescord/relay:latest .
+docker compose up -d
+```
+
+> `network_mode: host` lets Wake-on-LAN broadcasts reach your LAN. If your
+> platform can't use host networking, map a port instead — Wake may then need a
+> directed broadcast in `wol_broadcasts`.
 
 ---
 
